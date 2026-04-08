@@ -9,6 +9,18 @@ from pyvis.network import Network
 
 
 SAMPLE_EDGES = "A-B, A-C, B-D, B-E, C-F, E-G, F-H"
+BEST_FIRST_SAMPLE_EDGES = "A-B, A-C, B-D, B-E, C-F, C-G, F-H, G-I"
+BEST_FIRST_SAMPLE_HEURISTICS = {
+    "A": 7,
+    "B": 6,
+    "C": 4,
+    "D": 8,
+    "E": 5,
+    "F": 2,
+    "G": 1,
+    "H": 3,
+    "I": 0,
+}
 
 
 def parse_edges(text: str) -> List[Tuple[str, str]]:
@@ -86,6 +98,8 @@ def build_pyvis_html(
     traversed_edges: Set[Tuple[str, str]],
     active_edge: Tuple[str, str] | None,
     active_step_type: str = "",
+    heuristics: Dict[str, int] | None = None,
+    final_path_edges: Set[Tuple[str, str]] | None = None,
 ) -> str:
     net = Network(height="560px", width="100%", directed=False, bgcolor="#0F172A", font_color="#E2E8F0")
     net.barnes_hut()
@@ -93,10 +107,15 @@ def build_pyvis_html(
     for node in sorted(graph.nodes()):
         color, size = _node_styles(node, visited, current)
         x, y = pos[node]
+        node_label = f"{node}({heuristics[node]})" if heuristics and node in heuristics else node
+        title = f"Node: {node}"
+        if heuristics and node in heuristics:
+            title = f"Node: {node} | h={heuristics[node]}"
+
         net.add_node(
             node,
-            label=node,
-            title=f"Node: {node}",
+            label=node_label,
+            title=title,
             color=color,
             size=size,
             x=float(x) * 340,
@@ -113,6 +132,10 @@ def build_pyvis_html(
         if edge in traversed_edges:
             color = "#22C55E"
             width = 3
+
+        if final_path_edges and edge in final_path_edges:
+            color = "#EC4899"
+            width = 5
 
         if active_edge and edge == active_edge:
             if active_step_type == "backtrack":
@@ -172,6 +195,8 @@ def draw_matplotlib(
     traversed_edges: Set[Tuple[str, str]],
     active_edge: Tuple[str, str] | None,
     active_step_type: str = "",
+    heuristics: Dict[str, int] | None = None,
+    final_path_edges: Set[Tuple[str, str]] | None = None,
 ):
     node_colors = []
     node_sizes = []
@@ -193,6 +218,15 @@ def draw_matplotlib(
     ]
     if traversed:
         nx.draw_networkx_edges(graph, pos, edgelist=traversed, edge_color="#22C55E", width=3.0, ax=ax)
+
+    if final_path_edges:
+        final_path = [
+            edge
+            for edge in graph.edges()
+            if _edge_key(edge[0], edge[1]) in final_path_edges
+        ]
+        if final_path:
+            nx.draw_networkx_edges(graph, pos, edgelist=final_path, edge_color="#EC4899", width=5.2, ax=ax)
 
     if active_edge:
         active = [
@@ -225,7 +259,10 @@ def draw_matplotlib(
     nx.draw_networkx_labels(
         graph,
         pos,
-        labels={node: node for node in graph.nodes()},
+        labels={
+            node: (f"{node}({heuristics[node]})" if heuristics and node in heuristics else node)
+            for node in graph.nodes()
+        },
         font_size=14,
         font_color="#F8FAFC",
         font_weight="bold",
